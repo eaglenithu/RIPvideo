@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <title>1:1 Tamil Video Generator</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .box { background: #1e1e1e; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; text-align: center; }
+        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; box-sizing: border-box; }
+        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; font-size: 16px; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        #status { color: #ffc107; margin-bottom: 10px; font-size: 14px; }
+        /* Showing the square preview */
+        canvas { width: 100%; aspect-ratio: 1 / 1; border: 2px solid #333; background: #000; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>Memorial Video Try</h2>
+    <div id="status">Upload a photo to begin</div>
+    
+    <input type="file" id="imageInput" accept="image/*">
+    <input type="text" id="tamilText" value="ஆழ்ந்த இரங்கல்கள்" placeholder="Tamil Text Here">
+    
+    <button id="generateBtn">GENERATE & DOWNLOAD</button>
+
+    <canvas id="c" width="600" height="600"></canvas>
+</div>
+
+<video id="v" src="https://eaglenithu.github.io/RIPvideo/greenscreen.mp4" crossorigin="anonymous" muted style="display:none;"></video>
+
+<script>
+    const video = document.getElementById('v');
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', {willReadFrequently: true});
+    const btn = document.getElementById('generateBtn');
+    const status = document.getElementById('status');
+    let bg = new Image();
+
+    document.getElementById('imageInput').onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = (f) => { bg.src = f.target.result; status.innerText = "Photo loaded. Ready to generate."; };
+        reader.readAsDataURL(e.target.files[0]);
+    };
+
+    btn.onclick = () => {
+        if(!bg.src) return alert("Please upload a photo!");
+        
+        btn.disabled = true;
+        status.innerText = "Processing... Video will download automatically.";
+        
+        video.currentTime = 0;
+        video.play();
+
+        // Setup Recording
+        const stream = canvas.captureStream(30); 
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+        const chunks = [];
+
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tamil_tribute_1x1.mp4';
+            a.click();
+            btn.disabled = false;
+            status.innerText = "Download Complete!";
+        };
+
+        recorder.start();
+        process(recorder);
+    };
+
+    function process(recorder) {
+        if (video.paused || video.ended) {
+            recorder.stop();
+            return;
+        }
+
+        // 1. Draw Background (Center Cropped to 1:1)
+        let scale = Math.max(canvas.width / bg.width, canvas.height / bg.height);
+        let x = (canvas.width / 2) - (bg.width / 2) * scale;
+        let y = (canvas.height / 2) - (bg.height / 2) * scale;
+        ctx.drawImage(bg, x, y, bg.width * scale, bg.height * scale);
+
+        // 2. Process Green Screen Video
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tCtx = tempCanvas.getContext('2d');
+        
+        // Draw video centered in the square
+        let vScale = canvas.height / video.videoHeight;
+        let vX = (canvas.width / 2) - (video.videoWidth / 2) * vScale;
+        tCtx.drawImage(video, vX, 0, video.videoWidth * vScale, video.videoHeight * vScale);
+
+        let frame = tCtx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < frame.data.length / 4; i++) {
+            let r = frame.data[i * 4 + 0];
+            let g = frame.data[i * 4 + 1];
+            let b = frame.data[i * 4 + 2];
+            // Chroma key math
+            if (g > 70 && g > r * 1.1 && g > b * 1.1) {
+                frame.data[i * 4 + 3] = 0;
+            }
+        }
+        tCtx.putImageData(frame, 0, 0);
+        ctx.drawImage(tempCanvas, 0, 0);
+
+        // 3. Tamil Text with slow fade
+        let opacity = Math.min(video.currentTime / 5, 1); 
+        
+        // Bottom Black Gradient/Box
+        ctx.fillStyle = `rgba(0, 0, 0, ${opacity * 0.7})`;
+        ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+
+        // White Text
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.font = "bold 24px Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(document.getElementById('tamilText').value, canvas.width/2, canvas.height - 35);
+
+        requestAnimationFrame(() => process(recorder));
+    }
+</script>
+
+</body>
+</html>
